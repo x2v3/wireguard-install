@@ -431,6 +431,12 @@ PrivateKey = ${CLIENT_PRIV_KEY}
 Address = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128
 DNS = ${CLIENT_DNS_1},${CLIENT_DNS_2}
 
+# Enable client-to-client communication by allowing incoming VPN traffic
+PostUp = iptables -I INPUT -i %i -j ACCEPT
+PostUp = ip6tables -I INPUT -i %i -j ACCEPT
+PostDown = iptables -D INPUT -i %i -j ACCEPT
+PostDown = ip6tables -D INPUT -i %i -j ACCEPT
+
 # Uncomment the next line to set a custom MTU
 # This might impact performance, so use it only if you know what you are doing
 # See https://github.com/nitred/nr-wg-mtu-finder to find your optimal MTU
