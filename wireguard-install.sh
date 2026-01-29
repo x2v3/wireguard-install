@@ -171,11 +171,15 @@ function installQuestions() {
 		fi
 	done
 
+	# Calculate subnet from server IP
+	SERVER_WG_IPV4_SUBNET=$(echo "${SERVER_WG_IPV4}" | awk -F '.' '{ print $1"."$2"."$3".0/24" }')
+	SERVER_WG_IPV6_SUBNET=$(echo "${SERVER_WG_IPV6}" | sed 's/::[^:]*$/::\/64/')
+
 	until [[ ${ALLOWED_IPS} =~ ^.+$ ]]; do
 		echo -e "\nWireGuard uses a parameter called AllowedIPs to determine what is routed over the VPN."
-		read -rp "Allowed IPs list for generated clients (leave default to route everything): " -e -i '0.0.0.0/0,::/0' ALLOWED_IPS
+		read -rp "Allowed IPs list for generated clients (leave default to route VPN subnet only): " -e -i "${SERVER_WG_IPV4_SUBNET},${SERVER_WG_IPV6_SUBNET}" ALLOWED_IPS
 		if [[ ${ALLOWED_IPS} == "" ]]; then
-			ALLOWED_IPS="0.0.0.0/0,::/0"
+			ALLOWED_IPS="${SERVER_WG_IPV4_SUBNET},${SERVER_WG_IPV6_SUBNET}"
 		fi
 	done
 
@@ -429,7 +433,8 @@ DNS = ${CLIENT_DNS_1},${CLIENT_DNS_2}
 PublicKey = ${SERVER_PUB_KEY}
 PresharedKey = ${CLIENT_PRE_SHARED_KEY}
 Endpoint = ${ENDPOINT}
-AllowedIPs = ${ALLOWED_IPS}" >"${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
+AllowedIPs = ${ALLOWED_IPS}
+PersistentKeepalive = 25" >"${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
 
 	# Add the client as a peer to the server
 	echo -e "\n### Client ${CLIENT_NAME}
