@@ -173,7 +173,14 @@ function installQuestions() {
 
 	# Calculate subnet from server IP
 	SERVER_WG_IPV4_SUBNET=$(echo "${SERVER_WG_IPV4}" | awk -F '.' '{ print $1"."$2"."$3".0/24" }')
-	SERVER_WG_IPV6_SUBNET=$(echo "${SERVER_WG_IPV6}" | sed 's/::[^:]*$/::\/64/')
+	# For IPv6, extract the prefix (everything before the last segment) and add /64
+	if [[ ${SERVER_WG_IPV6} =~ :: ]]; then
+		# Compressed format (e.g., fd42:42:42::1 -> fd42:42:42::/64)
+		SERVER_WG_IPV6_SUBNET=$(echo "${SERVER_WG_IPV6}" | sed 's/::[^:]*$/::\/64/')
+	else
+		# Uncompressed format (e.g., fd42:42:42:0:0:0:0:1 -> fd42:42:42::/64)
+		SERVER_WG_IPV6_SUBNET=$(echo "${SERVER_WG_IPV6}" | awk -F: '{print $1":"$2":"$3"::/64"}')
+	fi
 
 	until [[ ${ALLOWED_IPS} =~ ^.+$ ]]; do
 		echo -e "\nWireGuard uses a parameter called AllowedIPs to determine what is routed over the VPN."
