@@ -270,14 +270,18 @@ PostDown = firewall-cmd --zone=public --add-interface=${SERVER_WG_NIC} && firewa
 	else
 		echo "PostUp = iptables -I INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
 PostUp = iptables -I FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
+PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
 PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
 PostUp = iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
+PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
 PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
 PostUp = ip6tables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
 PostDown = iptables -D INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
 PostDown = iptables -D FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
+PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
 PostDown = iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
+PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
 PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
 PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	fi
