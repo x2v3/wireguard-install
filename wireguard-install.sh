@@ -147,7 +147,7 @@ function installQuestions() {
 	done
 
 	until [[ ${SERVER_WG_IPV4} =~ ^([0-9]{1,3}\.){3} ]]; do
-		read -rp "Server WireGuard IPv4: " -e -i 10.66.66.1 SERVER_WG_IPV4
+		read -rp "Server WireGuard IPv4: " -e -i 172.20.0.1 SERVER_WG_IPV4
 	done
 
 	until [[ ${SERVER_WG_IPV6} =~ ^([a-f0-9]{1,4}:){3,4}: ]]; do
@@ -171,11 +171,22 @@ function installQuestions() {
 		fi
 	done
 
+	# Calculate subnet from server IP
+	SERVER_WG_IPV4_SUBNET=$(echo "${SERVER_WG_IPV4}" | awk -F '.' '{ print $1"."$2"."$3".0/24" }')
+	# For IPv6, extract the prefix (everything before the last segment) and add /64
+	if [[ ${SERVER_WG_IPV6} =~ :: ]]; then
+		# Compressed format (e.g., fd42:42:42::1 -> fd42:42:42::/64)
+		SERVER_WG_IPV6_SUBNET=$(echo "${SERVER_WG_IPV6}" | sed 's/::[^:]*$/::\/64/')
+	else
+		# Uncompressed format (e.g., fd42:42:42:0:0:0:0:1 -> fd42:42:42::/64)
+		SERVER_WG_IPV6_SUBNET=$(echo "${SERVER_WG_IPV6}" | awk -F: '{print $1":"$2":"$3"::/64"}')
+	fi
+
 	until [[ ${ALLOWED_IPS} =~ ^.+$ ]]; do
 		echo -e "\nWireGuard uses a parameter called AllowedIPs to determine what is routed over the VPN."
-		read -rp "Allowed IPs list for generated clients (leave default to route everything): " -e -i '0.0.0.0/0,::/0' ALLOWED_IPS
+		read -rp "Allowed IPs list for generated clients (leave default to route VPN subnet only): " -e -i "${SERVER_WG_IPV4_SUBNET},${SERVER_WG_IPV6_SUBNET}" ALLOWED_IPS
 		if [[ ${ALLOWED_IPS} == "" ]]; then
-			ALLOWED_IPS="0.0.0.0/0,::/0"
+			ALLOWED_IPS="${SERVER_WG_IPV4_SUBNET},${SERVER_WG_IPV6_SUBNET}"
 		fi
 	done
 
@@ -269,15 +280,23 @@ PrivateKey = ${SERVER_PRIV_KEY}" >"/etc/wireguard/${SERVER_WG_NIC}.conf"
 PostDown = firewall-cmd --zone=public --add-interface=${SERVER_WG_NIC} && firewall-cmd --remove-port ${SERVER_PORT}/udp && firewall-cmd --remove-rich-rule='rule family=ipv4 source address=${FIREWALLD_IPV4_ADDRESS}/24 masquerade' && firewall-cmd --remove-rich-rule='rule family=ipv6 source address=${FIREWALLD_IPV6_ADDRESS}/24 masquerade'" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	else
 		echo "PostUp = iptables -I INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
+PostUp = iptables -I INPUT -i ${SERVER_WG_NIC} -j ACCEPT
 PostUp = iptables -I FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
+PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
 PostUp = iptables -I FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
 PostUp = iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
+PostUp = ip6tables -I INPUT -i ${SERVER_WG_NIC} -j ACCEPT
+PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
 PostUp = ip6tables -I FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
 PostUp = ip6tables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
 PostDown = iptables -D INPUT -p udp --dport ${SERVER_PORT} -j ACCEPT
+PostDown = iptables -D INPUT -i ${SERVER_WG_NIC} -j ACCEPT
 PostDown = iptables -D FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
+PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
 PostDown = iptables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
 PostDown = iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
+PostDown = ip6tables -D INPUT -i ${SERVER_WG_NIC} -j ACCEPT
+PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -o ${SERVER_WG_NIC} -j ACCEPT
 PostDown = ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT
 PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	fi
@@ -412,6 +431,12 @@ PrivateKey = ${CLIENT_PRIV_KEY}
 Address = ${CLIENT_WG_IPV4}/32,${CLIENT_WG_IPV6}/128
 DNS = ${CLIENT_DNS_1},${CLIENT_DNS_2}
 
+# Enable client-to-client communication by allowing incoming VPN traffic
+PostUp = iptables -I INPUT -i %i -j ACCEPT
+PostUp = ip6tables -I INPUT -i %i -j ACCEPT
+PostDown = iptables -D INPUT -i %i -j ACCEPT
+PostDown = ip6tables -D INPUT -i %i -j ACCEPT
+
 # Uncomment the next line to set a custom MTU
 # This might impact performance, so use it only if you know what you are doing
 # See https://github.com/nitred/nr-wg-mtu-finder to find your optimal MTU
@@ -421,7 +446,8 @@ DNS = ${CLIENT_DNS_1},${CLIENT_DNS_2}
 PublicKey = ${SERVER_PUB_KEY}
 PresharedKey = ${CLIENT_PRE_SHARED_KEY}
 Endpoint = ${ENDPOINT}
-AllowedIPs = ${ALLOWED_IPS}" >"${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
+AllowedIPs = ${ALLOWED_IPS}
+PersistentKeepalive = 25" >"${HOME_DIR}/${SERVER_WG_NIC}-client-${CLIENT_NAME}.conf"
 
 	# Add the client as a peer to the server
 	echo -e "\n### Client ${CLIENT_NAME}
