@@ -323,6 +323,12 @@ net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 	else
 		sysctl --system
 
+		# Ensure wg-quick starts after docker to prevent iptables rules from being dropped
+		mkdir -p "/etc/systemd/system/wg-quick@${SERVER_WG_NIC}.service.d"
+		echo "[Unit]
+After=docker.service" >"/etc/systemd/system/wg-quick@${SERVER_WG_NIC}.service.d/override.conf"
+		systemctl daemon-reload
+
 		systemctl start "wg-quick@${SERVER_WG_NIC}"
 		systemctl enable "wg-quick@${SERVER_WG_NIC}"
 	fi
@@ -533,6 +539,8 @@ function uninstallWg() {
 		else
 			systemctl stop "wg-quick@${SERVER_WG_NIC}"
 			systemctl disable "wg-quick@${SERVER_WG_NIC}"
+			rm -rf "/etc/systemd/system/wg-quick@${SERVER_WG_NIC}.service.d"
+			systemctl daemon-reload
 		fi
 
 		if [[ ${OS} == 'ubuntu' ]] || [[ ${OS} == 'debian' ]]; then
